@@ -28,6 +28,7 @@ limitations under the License.
 #include <ctype.h>
 #include <functional>
 #include <limits.h>
+using namespace llvm;
 
 namespace ccls {
 REFLECT_STRUCT(SymbolInformation, name, kind, location, containerName);
@@ -44,12 +45,17 @@ void MessageHandler::workspace_didChangeWatchedFiles(
     DidChangeWatchedFilesParam &param) {
   for (auto &event : param.changes) {
     std::string path = event.uri.GetPath();
+    if (g_config->cacheDirectory.size() &&
+        StringRef(path).startswith(g_config->cacheDirectory))
+      return;
     IndexMode mode =
         wfiles->GetFile(path) ? IndexMode::Normal : IndexMode::NonInteractive;
     switch (event.type) {
     case FileChangeType::Created:
+      pipeline::Index(path, {}, mode, false);
+      break;
     case FileChangeType::Changed: {
-      pipeline::Index(path, {}, mode);
+      pipeline::Index(path, {}, mode, false);
       if (mode == IndexMode::Normal)
         manager->OnSave(path);
       else
@@ -57,7 +63,7 @@ void MessageHandler::workspace_didChangeWatchedFiles(
       break;
     }
     case FileChangeType::Deleted:
-      pipeline::Index(path, {}, mode);
+      pipeline::Index(path, {}, mode, true);
       manager->OnClose(path);
       break;
     }
